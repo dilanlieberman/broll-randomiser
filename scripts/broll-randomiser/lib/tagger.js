@@ -67,14 +67,19 @@ async function tagTimeline(framePaths, times, duration, vocab, client = new Anth
 
   const res = await client.messages.create({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: 8192, // long clips (200s+) produce many spans; 2000 truncated them
     tools: [TIMELINE_TOOL],
     tool_choice: { type: 'tool', name: 'record_timeline' },
     messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...framesContent(framePaths, times)] }],
   });
 
+  if (res.stop_reason === 'max_tokens') {
+    throw new Error(`tagger: timeline truncated at max_tokens (${framePaths.length} frames) — raise the cap`);
+  }
   const block = res.content.find((b) => b.type === 'tool_use');
-  if (!block) throw new Error('tagger: model did not return a tool_use block');
+  if (!block || !Array.isArray(block.input.spans)) {
+    throw new Error('tagger: model did not return a valid spans array');
+  }
   return block.input.spans;
 }
 
