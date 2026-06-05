@@ -100,6 +100,10 @@ async function ingestOne(file, catalog, vocab) {
         setting: span.setting,
         motion: span.motion,
         quality: span.quality,
+        has_text: span.has_text,
+        scenery: span.scenery,
+        has_palms: span.has_palms,
+        has_snow: span.has_snow,
       });
       mergeNewTags(vocab, tags);
       added++;
@@ -122,6 +126,14 @@ async function main() {
   if (batchNames) {
     files = files.filter((f) => batchNames.some((n) => path.basename(f).includes(n)));
     console.log(`Batch mode: ${files.length} clip(s) matched ${JSON.stringify(batchNames)}`);
+  }
+
+  // Non-destructive skip-list — drop content-taste junk sources (footage stays on disk).
+  const skip = loadJson(path.join(DATA_DIR, 'exclude-sources.json'), { skip: [] }).skip || [];
+  if (skip.length) {
+    const before = files.length;
+    files = files.filter((f) => !skip.some((s) => path.basename(f).includes(s)));
+    console.log(`Skip-list: excluded ${before - files.length} source(s) per exclude-sources.json`);
   }
   console.log(`Ingesting ${files.length} source file(s)...\n`);
 

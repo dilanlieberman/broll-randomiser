@@ -18,6 +18,14 @@ const SPAN_PROPS = {
   setting: { type: 'string', enum: ['roof', 'interior', 'exterior', 'mixed'] },
   motion: { type: 'string', enum: ['static', 'handheld', 'pan', 'pov', 'drone'] },
   quality: { type: 'string', enum: ['good', 'usable', 'weak'] },
+  has_text: { type: 'boolean', description: 'TRUE if ANY overlaid text is visible — captions, title cards, logos, watermarks, social @handles, lower-thirds, on-screen graphics. Be strict: even a small corner watermark or username counts.' },
+  scenery: {
+    type: 'string',
+    enum: ['temperate', 'arid', 'tropical-coastal', 'snowy', 'indeterminate'],
+    description: 'The clip\'s plausible US region from visible environment cues. temperate = green deciduous trees / 4-season northeast-midwest-PNW suburb; arid = dry brown hills, desert, sparse vegetation (southwest); tropical-coastal = palms, lush tropical, beach; snowy = snow/ice/winter; indeterminate = roof+sky only or interior, no placeable outdoor cues (usable anywhere).',
+  },
+  has_palms: { type: 'boolean', description: 'TRUE if palm trees or clearly tropical/desert vegetation are visible.' },
+  has_snow: { type: 'boolean', description: 'TRUE if snow or ice is visible on the ground/roof.' },
 };
 
 const TIMELINE_TOOL = {
@@ -49,6 +57,20 @@ function framesContent(framePaths, times) {
   return content;
 }
 
+// Retry transient API failures (5xx / 429 / overloaded) with exponential backoff.
+async function withRetry(fn, { attempts = 4, baseMs = 1500 } = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err?.status || err?.statusCode;
+      const transient = status >= 500 || status === 429 || /overloaded/i.test(err?.message || '');
+      if (!transient || i >= attempts - 1) throw err;
+      await new Promise((r) => setTimeout(r, baseMs * 2 ** i));
+    }
+  }
+}
+
 async function tagTimeline(framePaths, times, duration, vocab, client = new Anthropic()) {
   const allowed = flattenVocab(vocab);
   const prompt =
@@ -63,15 +85,20 @@ async function tagTimeline(framePaths, times, duration, vocab, client = new Anth
     `most ONE new kebab-case tag only if nothing matches; include 'generic-action' ` +
     `as a fallback when motion exists but nothing specific fits):\n${allowed.join(', ')}\n\n` +
     `quality: 'good' = sharp/clear hero shot, 'usable' = fine but unremarkable, ` +
-    `'weak' = blurry/dark/boring. Call record_timeline with the result.`;
+    `'weak' = blurry/dark/boring.\n\n` +
+    `Also for each span judge: has_text (any overlaid text/caption/watermark/handle — ` +
+    `be strict), scenery (the plausible US region from environment cues — temperate / ` +
+    `arid / tropical-coastal / snowy / indeterminate), and the has_palms / has_snow ` +
+    `flags. These drive region-appropriate matching, so look carefully at vegetation, ` +
+    `terrain, and weather. Call record_timeline with the result.`;
 
-  const res = await client.messages.create({
+  const res = await withRetry(() => client.messages.create({
     model: MODEL,
     max_tokens: 8192, // long clips (200s+) produce many spans; 2000 truncated them
     tools: [TIMELINE_TOOL],
     tool_choice: { type: 'tool', name: 'record_timeline' },
     messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...framesContent(framePaths, times)] }],
-  });
+  }));
 
   if (res.stop_reason === 'max_tokens') {
     throw new Error(`tagger: timeline truncated at max_tokens (${framePaths.length} frames) — raise the cap`);

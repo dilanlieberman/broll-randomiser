@@ -61,3 +61,42 @@ describe('matchClips', () => {
     expect(seqs.size).toBeGreaterThan(1);
   });
 });
+
+describe('matchClips — text + region gating', () => {
+  const GEO = [
+    { id: 't1', src_file: 'T', tags: ['shingle-install'], quality: 'good', has_text: true, scenery: 'temperate' },
+    { id: 'nj1', src_file: 'N', tags: ['shingle-install'], quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'ind1', src_file: 'I', tags: ['shingle-install'], quality: 'good', has_text: false, scenery: 'indeterminate' },
+    { id: 'snow1', src_file: 'S', tags: ['shingle-install'], quality: 'good', has_text: false, scenery: 'snowy' },
+    { id: 'palm1', src_file: 'P', tags: ['shingle-install'], quality: 'good', has_text: false, scenery: 'tropical-coastal' },
+  ];
+  const w = [{ start: 0, end: 4, theme: 'shingle-install' }];
+
+  test('clips with on-screen text are never picked', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const ids = matchClips(Array.from({ length: 4 }, () => w[0]), GEO, { seed }).filter(Boolean).map((c) => c.id);
+      expect(ids).not.toContain('t1');
+    }
+  });
+
+  test('New Jersey job excludes snowy and tropical clips', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const ids = matchClips(Array.from({ length: 4 }, () => w[0]), GEO, { seed, state: 'New Jersey' }).filter(Boolean).map((c) => c.id);
+      expect(ids).not.toContain('snow1');
+      expect(ids).not.toContain('palm1');
+    }
+  });
+
+  test('New Jersey job keeps temperate and (loose) indeterminate clips', () => {
+    const picks = matchClips([w[0], w[0]], GEO, { seed: 4, state: 'NJ' }).filter(Boolean).map((c) => c.id);
+    expect(picks.every((id) => ['nj1', 'ind1'].includes(id))).toBe(true);
+  });
+
+  test('without a state, region is not gated (snowy/tropical remain eligible)', () => {
+    const seen = new Set();
+    for (let seed = 1; seed <= 30; seed++) {
+      matchClips(Array.from({ length: 4 }, () => w[0]), GEO, { seed }).filter(Boolean).forEach((c) => seen.add(c.id));
+    }
+    expect(seen.has('snow1') || seen.has('palm1')).toBe(true);
+  });
+});

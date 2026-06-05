@@ -23,7 +23,7 @@ const ROOT = path.join(__dirname, '../..');
 const DATA_DIR = path.join(ROOT, 'data/broll-randomiser');
 const OUT_DIR = path.join(DATA_DIR, 'out');
 
-async function generate(audioPath, { seed } = {}) {
+async function generate(audioPath, { seed, state = null, strict = false } = {}) {
   const catalog = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'catalog.json'), 'utf8'));
   const vocab = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'vocabulary.json'), 'utf8'));
   const runSeed = seed != null ? seed : Math.floor(Date.now() % 2147483647);
@@ -37,7 +37,8 @@ async function generate(audioPath, { seed } = {}) {
   const themes = await assignThemes(windows, vocab);
   windows.forEach((w, i) => { w.theme = themes[i] || 'generic-action'; });
 
-  const clips = matchClips(windows, catalog, { seed: runSeed });
+  if (state) console.log(`Region gate: ${state}${strict ? ' (strict)' : ' (loose)'}`);
+  const clips = matchClips(windows, catalog, { seed: runSeed, state, strict });
   const missing = clips.filter((c) => !c).length;
   if (missing) console.warn(`  WARNING: ${missing} window(s) had no eligible clip and will be skipped.`);
 
@@ -58,14 +59,18 @@ async function generate(audioPath, { seed } = {}) {
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const audioPath = args.find((a) => !a.startsWith('--'));
-  const seedIdx = args.indexOf('--seed');
-  const seed = seedIdx >= 0 ? Number(args[seedIdx + 1]) : undefined;
+  // Parse flags first, then the lone positional arg is the audio path.
+  const flagValue = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  const seed = args.includes('--seed') ? Number(flagValue('--seed')) : undefined;
+  const state = flagValue('--state') || null;
+  const strict = args.includes('--strict');
+  const consumed = new Set(['--seed', flagValue('--seed'), '--state', flagValue('--state'), '--strict']);
+  const audioPath = args.find((a) => !a.startsWith('--') && !consumed.has(a));
   if (!audioPath) {
-    console.error('Usage: node generate.js <voiceover.mp3|wav> [--seed N]');
+    console.error('Usage: node generate.js <voiceover.mp3|wav> [--state "New Jersey"] [--seed N] [--strict]');
     process.exit(1);
   }
-  generate(audioPath, { seed }).catch((err) => { console.error(err); process.exit(1); });
+  generate(audioPath, { seed, state, strict }).catch((err) => { console.error(err); process.exit(1); });
 }
 
 module.exports = { generate };

@@ -6,6 +6,8 @@
 // in-reel repeats, theme → generic-action fallback, prefer good over usable.
 // Spec §5.3.
 
+const { clipEligibleForState } = require('./geo');
+
 const DEFAULT_EXCLUDE_TAGS = ['brand-title-card', 'bigfoot-parody'];
 const DEFAULT_EXCLUDE_QUALITY = ['weak'];
 const FALLBACK_THEME = 'generic-action';
@@ -27,11 +29,18 @@ function matchClips(windows, catalog, opts = {}) {
     perSourceCap = 2,
     excludeTags = DEFAULT_EXCLUDE_TAGS,
     excludeQuality = DEFAULT_EXCLUDE_QUALITY,
+    excludeHasText = true, // "pure content only" — no captions/watermarks/handles
+    state = null, // client's US state; gates clip scenery to the region when set
+    strict = false, // strict = require positive region match (drops indeterminate)
   } = opts;
 
   const excludeTagSet = new Set(excludeTags);
   const eligible = catalog.filter(
-    (c) => !c.tags.some((t) => excludeTagSet.has(t)) && !excludeQuality.includes(c.quality)
+    (c) =>
+      !c.tags.some((t) => excludeTagSet.has(t)) &&
+      !excludeQuality.includes(c.quality) &&
+      !(excludeHasText && c.has_text) &&
+      (!state || clipEligibleForState(c, state, { strict }))
   );
 
   const rand = rng(seed);
