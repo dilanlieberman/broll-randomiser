@@ -22,6 +22,15 @@ describe('clipMatchesDomain — roofing (strict)', () => {
   test('a pure generic-action clip does NOT match roofing', () => {
     expect(clipMatchesDomain({ tags: ['generic-action'], setting: 'exterior' }, 'roofing')).toBe(false);
   });
+
+  // Regression: real leaks from the NJ review run.
+  test('a silo demolition does NOT match roofing even if the crew is tagged (roofing-crew)', () => {
+    expect(clipMatchesDomain({ tags: ['silo-demolition', 'structure-teardown', 'roofing-crew', 'crew-working'], setting: 'exterior' }, 'roofing')).toBe(false);
+  });
+
+  test('an interior water-damage clip does NOT match roofing even if tagged storm-damage', () => {
+    expect(clipMatchesDomain({ tags: ['water-damage-interior', 'storm-damage', 'interior-demo-gutting'], setting: 'interior' }, 'roofing')).toBe(false);
+  });
 });
 
 describe('clipMatchesDomain — remodeling', () => {

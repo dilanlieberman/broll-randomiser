@@ -17,6 +17,10 @@ const REMODELING_TAGS = new Set([
   'painting', 'drywall', 'tile-transition-strip', 'tile-leveling-system',
 ]);
 
+// Building/structure demolition — its own thing, never roofing even if a roofing
+// crew or storm-damage tag rides along (a silo coming down is not roof b-roll).
+const DEMOLITION_TAGS = new Set(['silo-demolition', 'house-demolition']);
+
 function hasAny(tags, set) {
   return (tags || []).some((t) => set.has(t));
 }
@@ -26,9 +30,14 @@ function hasAny(tags, set) {
 // setting for remodeling. Neutral clips (bare exteriors, demolition, generic-only)
 // belong to NO domain and are excluded from a domain-gated reel.
 function clipMatchesDomain(clip, domain) {
-  if (domain === 'roofing') return clip.setting === 'roof' || hasAny(clip.tags, ROOFING_TAGS);
+  if (domain === 'roofing') {
+    if (clip.setting === 'interior') return false; // a roof is never shot indoors
+    if (hasAny(clip.tags, DEMOLITION_TAGS)) return false; // silos/houses coming down aren't roofing
+    return clip.setting === 'roof' || hasAny(clip.tags, ROOFING_TAGS);
+  }
   if (domain === 'remodeling') {
-    if (hasAny(clip.tags, ROOFING_TAGS) || clip.setting === 'roof') return false;
+    if (clip.setting === 'roof') return false;
+    if (hasAny(clip.tags, ROOFING_TAGS) && clip.setting !== 'interior') return false;
     return clip.setting === 'interior' || hasAny(clip.tags, REMODELING_TAGS);
   }
   return false;
