@@ -69,21 +69,27 @@ function matchClips(windows, catalog, opts = {}) {
   const rand = rng(seed);
   const usedIds = new Set();
   const srcCount = {};
+  const domUsed = {}; // how many times each dominant shot-subject has been used
+  const usedThemes = new Set(); // window themes already seen this reel
+  let lastDominant = null; // dominant subject of the previous clip (no back-to-back repeats)
+
+  const dominant = (c) => (c.tags && c.tags[0]) || 'generic-action';
+  const avail = (c) => !usedIds.has(c.id) && (srcCount[c.src_file] || 0) < perSourceCap;
 
   // Candidate clips for a theme under the live no-repeat + per-source-cap constraints.
-  const poolFor = (theme) =>
-    eligible.filter(
-      (c) => c.tags.includes(theme) && !usedIds.has(c.id) && (srcCount[c.src_file] || 0) < perSourceCap
-    );
+  const poolFor = (theme) => eligible.filter((c) => c.tags.includes(theme) && avail(c));
 
+  // Diversity-aware pick: minimize reuse of a shot-subject and never repeat the
+  // previous clip's dominant subject back-to-back, so a reel looks unique.
   const pick = (pool) => {
     if (!pool.length) return null;
-    const good = pool.filter((c) => c.quality === 'good');
-    const from = good.length ? good : pool; // prefer good over usable
+    const score = (c) => (domUsed[dominant(c)] || 0) + (dominant(c) === lastDominant ? 1000 : 0);
+    const min = Math.min(...pool.map(score));
+    const best = pool.filter((c) => score(c) === min);
+    const good = best.filter((c) => c.quality === 'good');
+    const from = good.length ? good : best; // prefer good over usable
     return from[Math.floor(rand() * from.length)];
   };
-
-  const avail = (c) => !usedIds.has(c.id) && (srcCount[c.src_file] || 0) < perSourceCap;
 
   return windows.map((w, idx) => {
     let chosen;
@@ -94,13 +100,20 @@ function matchClips(windows, catalog, opts = {}) {
       if (!chosen) chosen = pick(eligible.filter((c) => avail(c) && !c.tags.some((t) => CLOSING_NEGATIVE.has(t))));
       if (!chosen) chosen = pick(eligible.filter(avail));
     } else {
-      chosen = pick(poolFor(w.theme));
-      if (!chosen && w.theme !== FALLBACK_THEME) chosen = pick(poolFor(FALLBACK_THEME));
-      if (!chosen) chosen = pick(eligible.filter(avail));
+      // First time a theme appears, match it to the line. When it repeats, broaden
+      // to the whole eligible pool so pick() can diversify the shot-subject.
+      const broaden = usedThemes.has(w.theme);
+      usedThemes.add(w.theme);
+      let pool = broaden ? eligible.filter(avail) : poolFor(w.theme);
+      if (!pool.length && w.theme !== FALLBACK_THEME) pool = poolFor(FALLBACK_THEME);
+      if (!pool.length) pool = eligible.filter(avail);
+      chosen = pick(pool);
     }
     if (chosen) {
       usedIds.add(chosen.id);
       srcCount[chosen.src_file] = (srcCount[chosen.src_file] || 0) + 1;
+      domUsed[dominant(chosen)] = (domUsed[dominant(chosen)] || 0) + 1;
+      lastDominant = dominant(chosen);
     }
     return chosen;
   });

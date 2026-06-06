@@ -138,6 +138,36 @@ describe('matchClips — always ends on a good note', () => {
   });
 });
 
+describe('matchClips — theme diversity (look unique)', () => {
+  const DIV = [
+    { id: 's1', src_file: 'S1', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 's2', src_file: 'S2', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 't1', src_file: 'T', tags: ['roof-teardown'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'a1', src_file: 'A', tags: ['roof-aerial'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'c1', src_file: 'C', tags: ['roofing-crew'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'v1', src_file: 'V', tags: ['valley-work'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'r1', src_file: 'R', tags: ['ridge-cap'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+  // 5 windows ALL assigned the same theme + a final window.
+  const sameThemeWindows = Array.from({ length: 6 }, (_, i) => ({ start: i * 4, end: i * 4 + 4, theme: 'shingle-install' }));
+
+  test('does not pour 5 same-theme lines into 5 identical-looking clips', () => {
+    const picks = matchClips(sameThemeWindows, DIV, { seed: 3, domain: 'roofing' }).filter(Boolean);
+    const nonFinal = picks.slice(0, -1);
+    const dominants = nonFinal.map((c) => c.tags[0]);
+    expect(new Set(dominants).size).toBeGreaterThanOrEqual(3); // spread, not all shingle-install
+  });
+
+  test('never repeats the same dominant shot back-to-back', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const picks = matchClips(sameThemeWindows, DIV, { seed, domain: 'roofing' }).filter(Boolean);
+      for (let i = 1; i < picks.length; i++) {
+        expect(picks[i].tags[0]).not.toBe(picks[i - 1].tags[0]);
+      }
+    }
+  });
+});
+
 describe('matchClips — domain gating', () => {
   const MIX = [
     { id: 'roof1', src_file: 'R', tags: ['generic-action'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
