@@ -7,6 +7,7 @@
 // Spec §5.3.
 
 const { clipEligibleForState } = require('./geo');
+const { clipMatchesDomain } = require('./domain');
 
 const DEFAULT_EXCLUDE_TAGS = ['brand-title-card', 'bigfoot-parody'];
 const DEFAULT_EXCLUDE_QUALITY = ['weak'];
@@ -32,6 +33,7 @@ function matchClips(windows, catalog, opts = {}) {
     excludeHasText = true, // "pure content only" — no captions/watermarks/handles
     state = null, // client's US state; gates clip scenery to the region when set
     strict = false, // strict = require positive region match (drops indeterminate)
+    domain = null, // 'roofing' | 'remodeling' — gates the reel to one service domain
   } = opts;
 
   const excludeTagSet = new Set(excludeTags);
@@ -40,7 +42,8 @@ function matchClips(windows, catalog, opts = {}) {
       !c.tags.some((t) => excludeTagSet.has(t)) &&
       !excludeQuality.includes(c.quality) &&
       !(excludeHasText && c.has_text) &&
-      (!state || clipEligibleForState(c, state, { strict }))
+      (!state || clipEligibleForState(c, state, { strict })) &&
+      (!domain || clipMatchesDomain(c, domain))
   );
 
   const rand = rng(seed);

@@ -100,3 +100,23 @@ describe('matchClips — text + region gating', () => {
     expect(seen.has('snow1') || seen.has('palm1')).toBe(true);
   });
 });
+
+describe('matchClips — domain gating', () => {
+  const MIX = [
+    { id: 'roof1', src_file: 'R', tags: ['generic-action'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'roof2', src_file: 'R2', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'kitchen1', src_file: 'K', tags: ['kitchen-remodel', 'generic-action'], setting: 'interior', quality: 'good', has_text: false, scenery: 'indeterminate' },
+    { id: 'silo1', src_file: 'S', tags: ['silo-demolition', 'generic-action'], setting: 'exterior', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+  const gw = (theme) => ({ start: 0, end: 4, theme });
+
+  test('a roofing reel never pulls interior remodel or demolition/generic clips', () => {
+    const windows = [gw('generic-action'), gw('shingle-install'), gw('generic-action')];
+    for (let seed = 1; seed <= 15; seed++) {
+      const ids = matchClips(windows, MIX, { seed, domain: 'roofing' }).filter(Boolean).map((c) => c.id);
+      expect(ids).not.toContain('kitchen1');
+      expect(ids).not.toContain('silo1');
+      expect(ids.every((id) => id.startsWith('roof'))).toBe(true);
+    }
+  });
+});
