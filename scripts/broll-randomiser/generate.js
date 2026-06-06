@@ -18,12 +18,13 @@ const { segmentWindows } = require('./lib/segmenter');
 const { assignThemes } = require('./lib/theme');
 const { matchClips } = require('./lib/matcher');
 const { buildAssemblyPlan, planTotalDuration, renderReel } = require('./lib/assembler');
+const { captionReel } = require('./lib/caption');
 
 const ROOT = path.join(__dirname, '../..');
 const DATA_DIR = path.join(ROOT, 'data/broll-randomiser');
 const OUT_DIR = path.join(DATA_DIR, 'out');
 
-async function generate(audioPath, { seed, state = null, strict = false, domain = null } = {}) {
+async function generate(audioPath, { seed, state = null, strict = false, domain = null, caption = false } = {}) {
   const catalog = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'catalog.json'), 'utf8'));
   const vocab = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'vocabulary.json'), 'utf8'));
   const runSeed = seed != null ? seed : Math.floor(Date.now() % 2147483647);
@@ -55,7 +56,15 @@ async function generate(audioPath, { seed, state = null, strict = false, domain 
   const manifest = pairs.map((p, i) => `${i}. [${p.w.theme}] ${p.c.id}  (${p.w.text})`).join('\n');
   fs.writeFileSync(outPath.replace(/\.mp4$/, '.manifest.txt'), manifest);
   console.log(`\nDone → ${path.relative(ROOT, outPath)}\n\nClips used:\n${manifest}`);
-  return { outPath, plan, windows };
+
+  let captionedPath = null;
+  if (caption) {
+    console.log('\nCaptioning via Submagic (Hormozi 3)...');
+    captionedPath = outPath.replace(/\.mp4$/, '-captioned.mp4');
+    await captionReel(outPath, captionedPath, { title: `B-Roll ${domain || ''} ${state || ''}`.trim() });
+    console.log(`Captioned → ${path.relative(ROOT, captionedPath)}`);
+  }
+  return { outPath, captionedPath, plan, windows };
 }
 
 if (require.main === module) {
@@ -66,13 +75,14 @@ if (require.main === module) {
   const state = flagValue('--state') || null;
   const domain = flagValue('--domain') || null;
   const strict = args.includes('--strict');
-  const consumed = new Set(['--seed', flagValue('--seed'), '--state', flagValue('--state'), '--domain', flagValue('--domain'), '--strict']);
+  const caption = args.includes('--caption');
+  const consumed = new Set(['--seed', flagValue('--seed'), '--state', flagValue('--state'), '--domain', flagValue('--domain'), '--strict', '--caption']);
   const audioPath = args.find((a) => !a.startsWith('--') && !consumed.has(a));
   if (!audioPath) {
-    console.error('Usage: node generate.js <voiceover.mp3|wav> [--domain roofing|remodeling] [--state "New Jersey"] [--seed N] [--strict]');
+    console.error('Usage: node generate.js <voiceover.mp3|wav> [--domain roofing|remodeling] [--state "New Jersey"] [--seed N] [--strict] [--caption]');
     process.exit(1);
   }
-  generate(audioPath, { seed, state, strict, domain }).catch((err) => { console.error(err); process.exit(1); });
+  generate(audioPath, { seed, state, strict, domain, caption }).catch((err) => { console.error(err); process.exit(1); });
 }
 
 module.exports = { generate };
