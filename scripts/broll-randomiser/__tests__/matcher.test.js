@@ -1,4 +1,4 @@
-const { matchClips } = require('../lib/matcher');
+const { matchClips, isClosingWorthy } = require('../lib/matcher');
 
 const CATALOG = [
   { id: 'a1', src_file: 'A', tags: ['roof-teardown'], quality: 'good' },
@@ -47,8 +47,9 @@ describe('matchClips', () => {
     expect(picks.some((c) => c.tags.includes('generic-action'))).toBe(true);
   });
 
-  test('matches the window theme', () => {
-    const picks = matchClips([win('shingle-install', 0)], CATALOG, { seed: 1 });
+  test('matches the window theme (on a non-final window)', () => {
+    // Two windows so window 0 is a normal (non-closer) theme match.
+    const picks = matchClips([win('shingle-install', 0), win('roof-teardown', 1)], CATALOG, { seed: 1 });
     expect(picks[0].id).toBe('c1');
   });
 
@@ -98,6 +99,42 @@ describe('matchClips — text + region gating', () => {
       matchClips(Array.from({ length: 4 }, () => w[0]), GEO, { seed }).filter(Boolean).forEach((c) => seen.add(c.id));
     }
     expect(seen.has('snow1') || seen.has('palm1')).toBe(true);
+  });
+});
+
+describe('isClosingWorthy', () => {
+  test('a finished/aerial/establishing shot is closing-worthy', () => {
+    expect(isClosingWorthy({ tags: ['establishing-exterior', 'roof-aerial'], quality: 'good' })).toBe(true);
+    expect(isClosingWorthy({ tags: ['ridge-cap', 'shingle-install'], quality: 'good' })).toBe(true);
+  });
+  test('a teardown or damage shot is NOT closing-worthy', () => {
+    expect(isClosingWorthy({ tags: ['roof-teardown', 'roof-aerial'], quality: 'good' })).toBe(false);
+    expect(isClosingWorthy({ tags: ['storm-damage', 'establishing-exterior'], quality: 'good' })).toBe(false);
+  });
+  test('a weak-quality clip is never closing-worthy', () => {
+    expect(isClosingWorthy({ tags: ['establishing-exterior'], quality: 'weak' })).toBe(false);
+  });
+});
+
+describe('matchClips — always ends on a good note', () => {
+  const CLOSE = [
+    { id: 'mid1', src_file: 'A', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'tear1', src_file: 'B', tags: ['roof-teardown'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'tear2', src_file: 'C', tags: ['roof-teardown'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'finish1', src_file: 'D', tags: ['establishing-exterior', 'roof-aerial'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+
+  test('the final clip is closing-worthy even when the last line\'s theme is teardown', () => {
+    const windows = [
+      { start: 0, end: 4, theme: 'shingle-install' },
+      { start: 4, end: 8, theme: 'roof-teardown' }, // CTA line happens to map to teardown
+    ];
+    for (let seed = 1; seed <= 15; seed++) {
+      const picks = matchClips(windows, CLOSE, { seed, domain: 'roofing' }).filter(Boolean);
+      const last = picks[picks.length - 1];
+      expect(isClosingWorthy(last)).toBe(true);
+      expect(last.id).toBe('finish1');
+    }
   });
 });
 
