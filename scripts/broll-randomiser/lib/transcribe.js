@@ -5,6 +5,12 @@
 const fs = require('fs');
 const OpenAI = require('openai');
 
+// The openai SDK's file upload needs globalThis.File, which isn't global until
+// Node 20. The VPS runs Node 18 — polyfill from node:buffer (File since 18.13).
+if (typeof globalThis.File === 'undefined') {
+  try { globalThis.File = require('node:buffer').File; } catch (_) {}
+}
+
 async function transcribe(audioPath, client = new OpenAI()) {
   const res = await client.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
