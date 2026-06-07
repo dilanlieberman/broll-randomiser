@@ -5,7 +5,7 @@
 // spaces, quotes, apostrophes, brackets or @ are always safe — the vault has all
 // of these (e.g. Twin Point's `"here's the deal".mp4`).
 
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -50,15 +50,36 @@ function sampleFramesAtTimes(srcFile, times, outDir, prefix) {
   });
 }
 
-// 9:16 1080x1920 center-crop-to-fill — same filter for vertical and horizontal
-// (scale up to fill, crop the overflow; no blurred bars). Trims [start,end),
+// Detect baked-in letterbox/pillarbox bars in the source (some clips are a wide
+// shot placed on a vertical canvas with black bars). Returns a "W:H:X:Y" crop of
+// the real content if it's meaningfully smaller than the source frame, else null.
+// Without this, a source that's already ~1080x1920 with bars survives crop-to-fill
+// untouched and the bars show up in the reel.
+function detectContentCrop(srcFile, start) {
+  let sw, sh;
+  try { ({ width: sw, height: sh } = getDimensions(srcFile)); } catch (_) { return null; }
+  const r = spawnSync('ffmpeg', ['-ss', start.toFixed(3), '-i', srcFile, '-vf', 'cropdetect=24:2:0', '-frames:v', '12', '-an', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const matches = [...(r.stderr || '').matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  if (!matches.length) return null;
+  const m = matches[matches.length - 1];
+  const [w, h] = [+m[1], +m[2]];
+  if (!sw || !sh) return null;
+  // Meaningful bars only — ignore 1-2px cropdetect jitter.
+  if (w < sw * 0.97 || h < sh * 0.97) return `${m[1]}:${m[2]}:${m[3]}:${m[4]}`;
+  return null;
+}
+
+// 9:16 1080x1920 center-crop-to-fill — strips any baked-in bars first, then scales
+// up to fill and crops the overflow (no blurred bars). Trims [start,end),
 // re-encodes H.264 30fps, strips audio. Spec §4.3.
 function normalizeSegment(srcFile, start, end, outPath) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   const dur = (end - start).toFixed(3);
+  const debar = detectContentCrop(srcFile, start);
+  const vf = `${debar ? `crop=${debar},` : ''}scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30`;
   ffmpeg([
     '-ss', start.toFixed(3), '-i', srcFile, '-t', dur,
-    '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30',
+    '-vf', vf,
     '-an', '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p', outPath,
   ]);
   return outPath;

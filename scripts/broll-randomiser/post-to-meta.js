@@ -3,11 +3,11 @@
 // Post a generated b-roll reel as a PAUSED video ad into an existing Meta ad set.
 // Reuses the upload/creative/ad patterns from service-delivery/11-leadgen-campaign.js.
 //
-//   node post-to-meta.js <reel.mp4>
+//   node post-to-meta.js <reel.mp4> [ad-config.json]
 //
-// Ad config (account/page/adset/link/copy) is embedded below for this One Call ad;
-// adapt CONFIG for future reels. Always creates the ad PAUSED — review + activate
-// in Ads Manager.
+// Ad config (account/page/adset/link/copy) comes from the JSON file if given,
+// else the embedded One Call default below. Always creates the ad PAUSED —
+// review + activate in Ads Manager.
 
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
@@ -18,7 +18,7 @@ const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const API_VERSION = process.env.META_API_VERSION || 'v25.0';
 const BASE_URL = `https://graph.facebook.com/${API_VERSION}`;
 
-const CONFIG = {
+const DEFAULT_CONFIG = {
   adAccountId: 'act_2947264552290336', // One Call x Pinnacle
   pageId: '109398820670337',
   adsetId: '120244572748810132', // "2 Videos 2 Images | May 31st – Copy"
@@ -49,6 +49,11 @@ const CONFIG = {
     cta: 'GET_QUOTE',
   },
 };
+
+// Use an ad-config JSON if provided (argv[3]), else the embedded One Call default.
+const CONFIG = process.argv[3] && fs.existsSync(process.argv[3])
+  ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))
+  : DEFAULT_CONFIG;
 
 async function metaPost(endpoint, body, label) {
   const res = await fetch(`${BASE_URL}${endpoint}`, {
