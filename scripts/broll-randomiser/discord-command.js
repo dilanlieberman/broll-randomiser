@@ -17,11 +17,12 @@ const { execFileSync } = require('child_process');
 const { parseCommand } = require('./lib/command');
 const { generate } = require('./generate');
 
-// Discord rejects uploads over ~25MB (code 40005). Submagic reels run 40-85MB, so
-// re-encode to a target size first. Picks a bitrate from the duration so the
-// output lands just under the cap; returns the original if it's already small.
-const DISCORD_CAP_MB = 24;
-const TARGET_MB = 22;
+// Discord's upload cap on a non-boosted server is 10MB (live test rejected 21.6MB
+// with code 40005). Re-encode to a duration-derived bitrate targeting ~8MB so it
+// posts inline. The full-quality reel stays on the VPS. (Boost the server to Tier 2
+// for a 50MB cap if higher-quality Discord delivery is wanted later.)
+const DISCORD_CAP_MB = 9;
+const TARGET_MB = 8;
 
 function compressForDiscord(inputPath) {
   const sizeMB = fs.statSync(inputPath).size / 1024 / 1024;
