@@ -12,9 +12,33 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const { parseCommand } = require('./lib/command');
 const { generate } = require('./generate');
+
+// Discord rejects uploads over ~25MB (code 40005). Submagic reels run 40-85MB, so
+// re-encode to a target size first. Picks a bitrate from the duration so the
+// output lands just under the cap; returns the original if it's already small.
+const DISCORD_CAP_MB = 24;
+const TARGET_MB = 22;
+
+function compressForDiscord(inputPath) {
+  const sizeMB = fs.statSync(inputPath).size / 1024 / 1024;
+  if (sizeMB <= DISCORD_CAP_MB) return inputPath;
+  const dur = parseFloat(
+    execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', inputPath], { encoding: 'utf8' }).trim()
+  );
+  const audioK = 128;
+  const videoK = Math.max(700, Math.floor((TARGET_MB * 8 * 1024) / dur) - audioK);
+  const out = inputPath.replace(/\.mp4$/, '-discord.mp4');
+  execFileSync('ffmpeg', [
+    '-y', '-i', inputPath,
+    '-c:v', 'libx264', '-b:v', `${videoK}k`, '-maxrate', `${Math.floor(videoK * 1.3)}k`, '-bufsize', `${videoK * 2}k`,
+    '-preset', 'fast', '-c:a', 'aac', '-b:a', `${audioK}k`, '-movflags', '+faststart', out,
+  ], { stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
+  return out;
+}
 
 const AUDIO_RE = /\.(mp3|wav|m4a|aac|ogg)$/i;
 const DOWNLOAD_DIR = path.join(__dirname, '../../data/broll-randomiser/.incoming');
@@ -57,9 +81,10 @@ async function handleBrollRequest(message, deps = {}) {
     caption: true,
   });
   const reelPath = captionedPath || outPath;
+  const postPath = compressForDiscord(reelPath); // shrink under Discord's upload cap
 
-  await reply({ content: '📤 Done — captioned reel:', files: [reelPath] });
-  return { ok: true, reelPath, parsed };
+  await reply({ content: '📤 Done — captioned reel:', files: [postPath] });
+  return { ok: true, reelPath, postPath, parsed };
 }
 
 module.exports = { handleBrollRequest, AUDIO_RE };
