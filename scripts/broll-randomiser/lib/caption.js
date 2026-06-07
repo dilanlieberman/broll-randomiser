@@ -54,7 +54,9 @@ async function captionReel(inputPath, outputPath, { title = 'B-Roll Reel', dicti
   if (!API_KEY) throw new Error('SUBMAGIC_API_KEY not set in .env');
   if (!fs.existsSync(inputPath)) throw new Error(`Reel not found: ${inputPath}`);
 
-  const remoteName = `broll-${path.basename(inputPath)}`;
+  // Sanitize: the name becomes both an rsync target and a fetchable URL, so it
+  // must be free of spaces/special chars (VO filenames often have spaces).
+  const remoteName = `broll-${path.basename(inputPath).replace(/[^A-Za-z0-9._-]/g, '_')}`;
   const remoteFile = `/tmp/${remoteName}`;
 
   console.log(IS_VPS ? '  staging reel locally on VPS...' : '  uploading reel to VPS...');
