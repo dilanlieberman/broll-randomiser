@@ -8,7 +8,8 @@
 const ROOFING_TAGS = new Set([
   'roof-teardown', 'shingle-install', 'ridge-cap', 'valley-work', 'flashing',
   'gutter-work', 'roof-inspection', 'roof-walkthrough', 'roof-aerial', 'roofing-crew',
-  'roofing-underlayment', 'storm-damage', 'roof-repair-sealant',
+  'roofing-underlayment', 'storm-damage', 'roof-repair-sealant', 'metal-roof-install',
+  'flat-roof-membrane',
 ]);
 
 const REMODELING_TAGS = new Set([
@@ -37,7 +38,9 @@ function clipMatchesDomain(clip, domain) {
   }
   if (domain === 'remodeling') {
     if (clip.setting === 'roof') return false;
-    if (hasAny(clip.tags, ROOFING_TAGS) && clip.setting !== 'interior') return false;
+    // Any roofing signal disqualifies — even mistagged setting=interior roof clips
+    // (some carry a stray finished-interior-reveal tag).
+    if (hasAny(clip.tags, ROOFING_TAGS)) return false;
     return clip.setting === 'interior' || hasAny(clip.tags, REMODELING_TAGS);
   }
   return false;
@@ -49,4 +52,22 @@ function clipDomain(clip) {
   return 'other';
 }
 
-module.exports = { clipMatchesDomain, clipDomain, ROOFING_TAGS, REMODELING_TAGS };
+// Finer than domain: gate to a specific service so a "bathroom ad" doesn't pull
+// kitchens, decks, pergolas, or anything outdoor. Bathrooms/kitchens are interior.
+const SERVICE_EXCLUDE = {
+  bathroom: new Set(['kitchen-remodel', 'pergola-outdoor', 'deck-board-install', 'attic-remodel']),
+  kitchen: new Set(['bathroom-remodel', 'shower-tiling', 'pergola-outdoor', 'deck-board-install', 'attic-remodel']),
+};
+
+function clipMatchesService(clip, service) {
+  if (service === 'roofing') return clipMatchesDomain(clip, 'roofing');
+  if (service === 'bathroom' || service === 'kitchen') {
+    if (!clipMatchesDomain(clip, 'remodeling')) return false;
+    if (clip.setting === 'exterior') return false; // interiors only
+    return !(clip.tags || []).some((t) => SERVICE_EXCLUDE[service].has(t));
+  }
+  // generic 'remodeling' or unknown → fall back to the broad remodeling domain
+  return clipMatchesDomain(clip, 'remodeling');
+}
+
+module.exports = { clipMatchesDomain, clipMatchesService, clipDomain, ROOFING_TAGS, REMODELING_TAGS };

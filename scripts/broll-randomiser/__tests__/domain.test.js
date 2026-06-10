@@ -1,4 +1,30 @@
-const { clipMatchesDomain, clipDomain } = require('../lib/domain');
+const { clipMatchesDomain, clipDomain, clipMatchesService } = require('../lib/domain');
+
+describe('clipMatchesService — bathroom ad scoping', () => {
+  const bath = (clip) => clipMatchesService(clip, 'bathroom');
+  test('a bathroom clip matches', () => {
+    expect(bath({ tags: ['bathroom-remodel', 'shower-tiling'], setting: 'interior' })).toBe(true);
+  });
+  test('a shared finished interior reveal matches', () => {
+    expect(bath({ tags: ['finished-interior-reveal', 'floor-tiling'], setting: 'interior' })).toBe(true);
+  });
+  test('a kitchen clip does NOT match a bathroom ad', () => {
+    expect(bath({ tags: ['kitchen-remodel', 'finished-interior-reveal'], setting: 'interior' })).toBe(false);
+  });
+  test('a deck / pergola (outdoor) does NOT match a bathroom ad', () => {
+    expect(bath({ tags: ['deck-board-install', 'before-after'], setting: 'exterior' })).toBe(false);
+    expect(bath({ tags: ['pergola-outdoor'], setting: 'exterior' })).toBe(false);
+  });
+  test('a roofing clip does NOT match a bathroom ad', () => {
+    expect(bath({ tags: ['shingle-install'], setting: 'roof' })).toBe(false);
+  });
+  test('a roof clip mistagged setting=interior still does NOT match a bathroom ad', () => {
+    expect(bath({ tags: ['metal-roof-install', 'finished-interior-reveal'], setting: 'interior' })).toBe(false);
+  });
+  test('roofing service still works', () => {
+    expect(clipMatchesService({ tags: ['shingle-install'], setting: 'roof' }, 'roofing')).toBe(true);
+  });
+});
 
 describe('clipMatchesDomain — roofing (strict)', () => {
   test('a clip with an explicit roofing tag matches roofing', () => {

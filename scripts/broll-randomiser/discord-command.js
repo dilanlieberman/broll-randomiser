@@ -77,6 +77,7 @@ async function handleBrollRequest(message, deps = {}) {
   const audioPath = await download(audio.url, path.join(DOWNLOAD_DIR, `${Date.now()}-${audio.name || 'vo.mp3'}`));
 
   const { outPath, captionedPath } = await generateFn(audioPath, {
+    service: parsed.service,
     domain: parsed.domain,
     state: parsed.state,
     caption: true,

@@ -7,7 +7,8 @@
 // Spec §5.3.
 
 const { clipEligibleForState } = require('./geo');
-const { clipMatchesDomain } = require('./domain');
+const { clipMatchesDomain, clipMatchesService } = require('./domain');
+const { valenceMatch } = require('./valence');
 
 const DEFAULT_EXCLUDE_TAGS = ['brand-title-card', 'bigfoot-parody'];
 const DEFAULT_EXCLUDE_QUALITY = ['weak'];
@@ -53,7 +54,8 @@ function matchClips(windows, catalog, opts = {}) {
     excludeHasText = true, // "pure content only" — no captions/watermarks/handles
     state = null, // client's US state; gates clip scenery to the region when set
     strict = false, // strict = require positive region match (drops indeterminate)
-    domain = null, // 'roofing' | 'remodeling' — gates the reel to one service domain
+    domain = null, // 'roofing' | 'remodeling' — broad domain gate
+    service = null, // 'roofing' | 'bathroom' | 'kitchen' — finer gate (preferred)
   } = opts;
 
   const excludeTagSet = new Set(excludeTags);
@@ -63,7 +65,7 @@ function matchClips(windows, catalog, opts = {}) {
       !excludeQuality.includes(c.quality) &&
       !(excludeHasText && c.has_text) &&
       (!state || clipEligibleForState(c, state, { strict })) &&
-      (!domain || clipMatchesDomain(c, domain))
+      (service ? clipMatchesService(c, service) : (!domain || clipMatchesDomain(c, domain)))
   );
 
   const rand = rng(seed);
@@ -100,13 +102,18 @@ function matchClips(windows, catalog, opts = {}) {
       if (!chosen) chosen = pick(eligible.filter((c) => avail(c) && !c.tags.some((t) => CLOSING_NEGATIVE.has(t))));
       if (!chosen) chosen = pick(eligible.filter(avail));
     } else {
+      // Valence contrast: problem lines pull run-down/demo clips, us/result lines
+      // pull aesthetic/neutral. Aesthetic-led, but never starve — fall back to
+      // ignoring valence rather than producing no clip.
+      const vOk = (c) => !w.valence || valenceMatch(c, w.valence);
       // First time a theme appears, match it to the line. When it repeats, broaden
       // to the whole eligible pool so pick() can diversify the shot-subject.
       const broaden = usedThemes.has(w.theme);
       usedThemes.add(w.theme);
-      let pool = broaden ? eligible.filter(avail) : poolFor(w.theme);
-      if (!pool.length && w.theme !== FALLBACK_THEME) pool = poolFor(FALLBACK_THEME);
-      if (!pool.length) pool = eligible.filter(avail);
+      let pool = (broaden ? eligible.filter(avail) : poolFor(w.theme)).filter(vOk);
+      if (!pool.length && w.theme !== FALLBACK_THEME) pool = poolFor(FALLBACK_THEME).filter(vOk);
+      if (!pool.length) pool = eligible.filter((c) => avail(c) && vOk(c));
+      if (!pool.length) pool = eligible.filter(avail); // last resort: any eligible
       chosen = pick(pool);
     }
     if (chosen) {

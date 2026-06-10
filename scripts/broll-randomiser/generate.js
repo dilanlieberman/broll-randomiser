@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '../..');
 const DATA_DIR = path.join(ROOT, 'data/broll-randomiser');
 const OUT_DIR = path.join(DATA_DIR, 'out');
 
-async function generate(audioPath, { seed, state = null, strict = false, domain = null, caption = false } = {}) {
+async function generate(audioPath, { seed, state = null, strict = false, domain = null, service = null, caption = false } = {}) {
   const catalog = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'catalog.json'), 'utf8'));
   const vocab = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'vocabulary.json'), 'utf8'));
   const runSeed = seed != null ? seed : Math.floor(Date.now() % 2147483647);
@@ -34,13 +34,17 @@ async function generate(audioPath, { seed, state = null, strict = false, domain 
   console.log(`  ${words.length} words, ${duration.toFixed(1)}s`);
 
   const windows = segmentWindows(words, duration);
-  console.log(`Segmented into ${windows.length} window(s). Assigning themes...`);
-  const themes = await assignThemes(windows, vocab);
-  windows.forEach((w, i) => { w.theme = themes[i] || 'generic-action'; });
+  console.log(`Segmented into ${windows.length} window(s). Assigning themes + valence...`);
+  const lines = await assignThemes(windows, vocab);
+  windows.forEach((w, i) => {
+    w.theme = (lines[i] && lines[i].theme) || 'generic-action';
+    w.valence = (lines[i] && lines[i].valence) || 'neutral';
+  });
 
-  if (domain) console.log(`Domain gate: ${domain}`);
+  if (service) console.log(`Service gate: ${service}`);
+  else if (domain) console.log(`Domain gate: ${domain}`);
   if (state) console.log(`Region gate: ${state}${strict ? ' (strict)' : ' (loose)'}`);
-  const clips = matchClips(windows, catalog, { seed: runSeed, state, strict, domain });
+  const clips = matchClips(windows, catalog, { seed: runSeed, state, strict, domain, service });
   const missing = clips.filter((c) => !c).length;
   if (missing) console.warn(`  WARNING: ${missing} window(s) had no eligible clip and will be skipped.`);
 
@@ -53,7 +57,7 @@ async function generate(audioPath, { seed, state = null, strict = false, domain 
   console.log(`Rendering ${plan.length} clip(s) (${planTotalDuration(plan).toFixed(1)}s, seed ${runSeed})...`);
   renderReel(plan, audioPath, outPath, { rootDir: ROOT });
 
-  const manifest = pairs.map((p, i) => `${i}. [${p.w.theme}] ${p.c.id}  (${p.w.text})`).join('\n');
+  const manifest = pairs.map((p, i) => `${i}. [${p.w.valence}|${p.w.theme}] ${p.c.id}  (${p.w.text})`).join('\n');
   fs.writeFileSync(outPath.replace(/\.mp4$/, '.manifest.txt'), manifest);
   console.log(`\nDone → ${path.relative(ROOT, outPath)}\n\nClips used:\n${manifest}`);
 
@@ -74,15 +78,16 @@ if (require.main === module) {
   const seed = args.includes('--seed') ? Number(flagValue('--seed')) : undefined;
   const state = flagValue('--state') || null;
   const domain = flagValue('--domain') || null;
+  const service = flagValue('--service') || null;
   const strict = args.includes('--strict');
   const caption = args.includes('--caption');
-  const consumed = new Set(['--seed', flagValue('--seed'), '--state', flagValue('--state'), '--domain', flagValue('--domain'), '--strict', '--caption']);
+  const consumed = new Set(['--seed', flagValue('--seed'), '--state', flagValue('--state'), '--domain', flagValue('--domain'), '--service', flagValue('--service'), '--strict', '--caption']);
   const audioPath = args.find((a) => !a.startsWith('--') && !consumed.has(a));
   if (!audioPath) {
-    console.error('Usage: node generate.js <voiceover.mp3|wav> [--domain roofing|remodeling] [--state "New Jersey"] [--seed N] [--strict] [--caption]');
+    console.error('Usage: node generate.js <voiceover.mp3|wav> [--service bathroom|kitchen|roofing] [--domain roofing|remodeling] [--state "New Jersey"] [--seed N] [--strict] [--caption]');
     process.exit(1);
   }
-  generate(audioPath, { seed, state, strict, domain, caption }).catch((err) => { console.error(err); process.exit(1); });
+  generate(audioPath, { seed, state, strict, domain, service, caption }).catch((err) => { console.error(err); process.exit(1); });
 }
 
 module.exports = { generate };
