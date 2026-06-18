@@ -26,6 +26,13 @@ const CLOSING_NEGATIVE = new Set([
   'roof-inspection',
 ]);
 
+// Cinematic = sweeping/hero roof shots (drone, aerial, establishing) over gritty
+// POV close-ups. Preferred when available so reels look polished, not handheld.
+const CINEMATIC_TAGS = new Set(['roof-aerial', 'establishing-exterior', 'before-after']);
+function isCinematic(clip) {
+  return clip.motion === 'drone' || (clip.tags || []).some((t) => CINEMATIC_TAGS.has(t));
+}
+
 function isClosingWorthy(clip) {
   return (
     clip.quality !== 'weak' &&
@@ -91,7 +98,9 @@ function matchClips(windows, catalog, opts = {}) {
     const min = Math.min(...pool.map(score));
     const best = pool.filter((c) => score(c) === min);
     const good = best.filter((c) => c.quality === 'good');
-    const from = good.length ? good : best; // prefer good over usable
+    const tier = good.length ? good : best; // prefer good over usable
+    const cine = tier.filter(isCinematic); // then prefer cinematic (drone/aerial)
+    const from = cine.length ? cine : tier;
     return from[Math.floor(rand() * from.length)];
   };
 
