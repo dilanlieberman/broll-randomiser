@@ -22,6 +22,15 @@ describe('matchClips', () => {
     expect(a.map((c) => c.id)).toEqual(b.map((c) => c.id));
   });
 
+  test('never picks a clip flagged exclude (e.g. slideshow)', () => {
+    const cat = [...CATALOG, { id: 'x1', src_file: 'X', tags: ['roof-teardown'], quality: 'good', exclude: true }];
+    const windows = Array.from({ length: 6 }, (_, i) => win('roof-teardown', i));
+    for (let seed = 1; seed <= 10; seed++) {
+      const ids = matchClips(windows, cat, { seed }).filter(Boolean).map((c) => c.id);
+      expect(ids).not.toContain('x1');
+    }
+  });
+
   test('never picks junk: brand-title-card or weak quality', () => {
     const windows = Array.from({ length: 4 }, (_, i) => win('roof-teardown', i));
     for (let seed = 1; seed <= 20; seed++) {

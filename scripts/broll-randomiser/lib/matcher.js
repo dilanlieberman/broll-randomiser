@@ -61,6 +61,7 @@ function matchClips(windows, catalog, opts = {}) {
   const excludeTagSet = new Set(excludeTags);
   const eligible = catalog.filter(
     (c) =>
+      !c.exclude && // manually killed clips (e.g. photo-slideshows) — never use
       !c.tags.some((t) => excludeTagSet.has(t)) &&
       !excludeQuality.includes(c.quality) &&
       !(excludeHasText && c.has_text) &&
