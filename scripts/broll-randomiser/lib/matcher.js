@@ -48,7 +48,8 @@ function rng(seed) {
 function matchClips(windows, catalog, opts = {}) {
   const {
     seed = 1,
-    perSourceCap = 2,
+    perSourceCap = 1, // one clip per source video per reel — two pieces of the same
+    //                   source read as "the same clip twice" even at different segments
     excludeTags = DEFAULT_EXCLUDE_TAGS,
     excludeQuality = DEFAULT_EXCLUDE_QUALITY,
     excludeHasText = true, // "pure content only" — no captions/watermarks/handles
