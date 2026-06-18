@@ -5,11 +5,13 @@
 // generic-action junk-drawer. Pure; derived from existing tags + setting, so no
 // re-ingest needed. Spec §5.3 domain gate.
 
+// NOTE: storm-damage is deliberately NOT here — it's cross-domain (tree removal,
+// interior water damage, generic storm cleanup all carry it). A storm-damaged ROOF
+// clip qualifies via setting=roof or roof-inspection/roof-teardown instead.
 const ROOFING_TAGS = new Set([
   'roof-teardown', 'shingle-install', 'ridge-cap', 'valley-work', 'flashing',
   'gutter-work', 'roof-inspection', 'roof-walkthrough', 'roof-aerial', 'roofing-crew',
-  'roofing-underlayment', 'storm-damage', 'roof-repair-sealant', 'metal-roof-install',
-  'flat-roof-membrane',
+  'roofing-underlayment', 'roof-repair-sealant', 'metal-roof-install', 'flat-roof-membrane',
 ]);
 
 const REMODELING_TAGS = new Set([

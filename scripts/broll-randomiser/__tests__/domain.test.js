@@ -18,6 +18,13 @@ describe('clipMatchesService — bathroom ad scoping', () => {
   test('a roofing clip does NOT match a bathroom ad', () => {
     expect(bath({ tags: ['shingle-install'], setting: 'roof' })).toBe(false);
   });
+  test('tree removal / generic storm-damage is NOT roofing (no real roof signal)', () => {
+    expect(clipMatchesService({ tags: ['tree-removal', 'storm-damage', 'debris-haul'], setting: 'exterior' }, 'roofing')).toBe(false);
+    expect(clipMatchesService({ tags: ['storm-damage', 'water-damage-interior'], setting: 'interior' }, 'roofing')).toBe(false);
+  });
+  test('a storm-damaged ROOF still counts as roofing (via roof signal)', () => {
+    expect(clipMatchesService({ tags: ['roof-inspection', 'storm-damage'], setting: 'roof' }, 'roofing')).toBe(true);
+  });
   test('a roof clip mistagged setting=interior still does NOT match a bathroom ad', () => {
     expect(bath({ tags: ['metal-roof-install', 'finished-interior-reveal'], setting: 'interior' })).toBe(false);
   });
