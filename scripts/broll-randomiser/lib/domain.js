@@ -61,12 +61,22 @@ const SERVICE_EXCLUDE = {
   kitchen: new Set(['bathroom-remodel', 'shower-tiling', 'pergola-outdoor', 'deck-board-install', 'attic-remodel']),
 };
 
+// A clip must carry a POSITIVE signal for the service — otherwise generic interior
+// clips (walk-in closets, drywall, loose floor-tiling, bathroom reveals) flood a
+// kitchen ad. Kitchen = the kitchen-remodel tag. (Bathroom stays broad for now.)
+const SERVICE_REQUIRE = {
+  kitchen: new Set(['kitchen-remodel']),
+};
+
 function clipMatchesService(clip, service) {
   if (service === 'roofing') return clipMatchesDomain(clip, 'roofing');
   if (service === 'bathroom' || service === 'kitchen') {
     if (!clipMatchesDomain(clip, 'remodeling')) return false;
     if (clip.setting === 'exterior') return false; // interiors only
-    return !(clip.tags || []).some((t) => SERVICE_EXCLUDE[service].has(t));
+    if ((clip.tags || []).some((t) => SERVICE_EXCLUDE[service].has(t))) return false;
+    const req = SERVICE_REQUIRE[service];
+    if (req && !(clip.tags || []).some((t) => req.has(t))) return false;
+    return true;
   }
   // generic 'remodeling' or unknown → fall back to the broad remodeling domain
   return clipMatchesDomain(clip, 'remodeling');

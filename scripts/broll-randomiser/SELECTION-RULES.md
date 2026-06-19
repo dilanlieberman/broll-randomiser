@@ -15,7 +15,7 @@ The Discord message's service word sets the scope (`clipMatchesService`):
   storm cleanup. A storm-damaged *roof* qualifies via its roof tag instead.
 - **Bathroom ad → bathroom-interior clips only.** No kitchens, decks, pergolas,
   roofing, or anything `setting:exterior`. **Kitchen ad → kitchen-interior only**
-  (no bathrooms). Same idea per service.
+  (no bathrooms). Same idea per service. Kitchen additionally REQUIRES a kitchen-remodel tag (real kitchens only) — generic interior clips (walk-in closets, drywall, loose tiling, bathroom reveals) were flooding kitchen ads.
 - Any roofing tag disqualifies a clip from remodeling even if it's mistagged
   `setting:interior` (some roof clips carry a stray `finished-interior-reveal`).
 

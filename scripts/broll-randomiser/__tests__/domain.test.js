@@ -33,6 +33,19 @@ describe('clipMatchesService — bathroom ad scoping', () => {
   });
 });
 
+describe('clipMatchesService — kitchen requires a real kitchen signal', () => {
+  const kit = (clip) => clipMatchesService(clip, 'kitchen');
+  test('an actual kitchen clip matches', () => {
+    expect(kit({ tags: ['kitchen-remodel', 'finished-interior-reveal'], setting: 'interior' })).toBe(true);
+  });
+  test('walk-in closet / drywall / loose floor-tiling / bathroom reveal do NOT match', () => {
+    expect(kit({ tags: ['walk-in-closet', 'finished-interior-reveal'], setting: 'interior' })).toBe(false);
+    expect(kit({ tags: ['drywall', 'single-worker'], setting: 'interior' })).toBe(false);
+    expect(kit({ tags: ['floor-tiling', 'tools-closeup'], setting: 'interior' })).toBe(false);
+    expect(kit({ tags: ['finished-interior-reveal'], setting: 'interior' })).toBe(false);
+  });
+});
+
 describe('clipMatchesDomain — roofing (strict)', () => {
   test('a clip with an explicit roofing tag matches roofing', () => {
     expect(clipMatchesDomain({ tags: ['roof-teardown', 'single-worker'], setting: 'roof' }, 'roofing')).toBe(true);
