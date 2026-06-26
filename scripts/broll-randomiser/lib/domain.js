@@ -8,10 +8,15 @@
 // NOTE: storm-damage is deliberately NOT here — it's cross-domain (tree removal,
 // interior water damage, generic storm cleanup all carry it). A storm-damaged ROOF
 // clip qualifies via setting=roof or roof-inspection/roof-teardown instead.
+// Residential roofing only. `flat-roof-membrane` (gravel-ballasted/TPO flat roofs)
+// is commercial — a homeowner can't relate to it — so it is deliberately NOT a
+// roofing signal. `metal-roof-install` stays a roofing tag for classification, but
+// every metal-roof clip is exclude:true at the catalog level (damaged "fell through
+// the roof" source), so none actually reach a reel.
 const ROOFING_TAGS = new Set([
   'roof-teardown', 'shingle-install', 'ridge-cap', 'valley-work', 'flashing',
   'gutter-work', 'roof-inspection', 'roof-walkthrough', 'roof-aerial', 'roofing-crew',
-  'roofing-underlayment', 'roof-repair-sealant', 'metal-roof-install', 'flat-roof-membrane',
+  'roofing-underlayment', 'roof-repair-sealant', 'metal-roof-install',
 ]);
 
 const REMODELING_TAGS = new Set([
@@ -23,6 +28,11 @@ const REMODELING_TAGS = new Set([
 // Building/structure demolition — its own thing, never roofing even if a roofing
 // crew or storm-damage tag rides along (a silo coming down is not roof b-roll).
 const DEMOLITION_TAGS = new Set(['silo-demolition', 'house-demolition']);
+
+// Commercial roofing — gravel-ballasted/TPO flat roofs. A homeowner can't relate
+// to it, so it is DISQUALIFIED from residential roofing even though it's shot on a
+// roof (setting=roof would otherwise let it through). Operator: residential only.
+const COMMERCIAL_TAGS = new Set(['flat-roof-membrane']);
 
 function hasAny(tags, set) {
   return (tags || []).some((t) => set.has(t));
@@ -36,6 +46,7 @@ function clipMatchesDomain(clip, domain) {
   if (domain === 'roofing') {
     if (clip.setting === 'interior') return false; // a roof is never shot indoors
     if (hasAny(clip.tags, DEMOLITION_TAGS)) return false; // silos/houses coming down aren't roofing
+    if (hasAny(clip.tags, COMMERCIAL_TAGS)) return false; // commercial flat roofs aren't residential roofing
     return clip.setting === 'roof' || hasAny(clip.tags, ROOFING_TAGS);
   }
   if (domain === 'remodeling') {

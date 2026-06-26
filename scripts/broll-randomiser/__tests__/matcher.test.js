@@ -139,7 +139,9 @@ describe('matchClips — always ends on a good note', () => {
       { start: 4, end: 8, theme: 'roof-teardown' }, // CTA line happens to map to teardown
     ];
     for (let seed = 1; seed <= 15; seed++) {
-      const picks = matchClips(windows, CLOSE, { seed, domain: 'roofing' }).filter(Boolean);
+      // state set so the aerial closer (finish1, temperate) clears the residential
+      // + strict-region aerial gate.
+      const picks = matchClips(windows, CLOSE, { seed, domain: 'roofing', state: 'NJ' }).filter(Boolean);
       const last = picks[picks.length - 1];
       expect(isClosingWorthy(last)).toBe(true);
       expect(last.id).toBe('finish1');
@@ -159,9 +161,11 @@ describe('matchClips — theme diversity (look unique)', () => {
   ];
   // 5 windows ALL assigned the same theme + a final window.
   const sameThemeWindows = Array.from({ length: 6 }, (_, i) => ({ start: i * 4, end: i * 4 + 4, theme: 'shingle-install' }));
+  // state set so the aerial filler (a1, temperate) stays in the pool under the
+  // residential + strict-region aerial gate.
 
   test('does not pour 5 same-theme lines into 5 identical-looking clips', () => {
-    const picks = matchClips(sameThemeWindows, DIV, { seed: 3, domain: 'roofing' }).filter(Boolean);
+    const picks = matchClips(sameThemeWindows, DIV, { seed: 3, domain: 'roofing', state: 'NJ' }).filter(Boolean);
     const nonFinal = picks.slice(0, -1);
     const dominants = nonFinal.map((c) => c.tags[0]);
     expect(new Set(dominants).size).toBeGreaterThanOrEqual(3); // spread, not all shingle-install
@@ -169,7 +173,7 @@ describe('matchClips — theme diversity (look unique)', () => {
 
   test('never repeats the same dominant shot back-to-back', () => {
     for (let seed = 1; seed <= 15; seed++) {
-      const picks = matchClips(sameThemeWindows, DIV, { seed, domain: 'roofing' }).filter(Boolean);
+      const picks = matchClips(sameThemeWindows, DIV, { seed, domain: 'roofing', state: 'NJ' }).filter(Boolean);
       for (let i = 1; i < picks.length; i++) {
         expect(picks[i].tags[0]).not.toBe(picks[i - 1].tags[0]);
       }
@@ -193,6 +197,57 @@ describe('matchClips — domain gating', () => {
       expect(ids).not.toContain('kitchen1');
       expect(ids).not.toContain('silo1');
       expect(ids.every((id) => id.startsWith('roof'))).toBe(true);
+    }
+  });
+});
+
+describe('matchClips — drone aerials are residential + strict-region gated', () => {
+  const AER = [
+    { id: 'aer_temp', src_file: 'AT', tags: ['roof-aerial', 'establishing-exterior'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'aer_arid', src_file: 'AA', tags: ['roof-aerial', 'establishing-exterior'], setting: 'exterior', quality: 'good', has_text: false, scenery: 'arid' },
+    { id: 'aer_motion', src_file: 'AM', tags: ['shingle-install'], motion: 'drone', setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'ground', src_file: 'GR', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+  const windows = Array.from({ length: 5 }, (_, i) => ({ start: i * 4, end: i * 4 + 4, theme: 'shingle-install' }));
+
+  test('no state set → no drone aerials at all (incl. motion:drone clips)', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const ids = matchClips(windows, AER, { seed, domain: 'roofing' }).filter(Boolean).map((c) => c.id);
+      expect(ids).not.toContain('aer_temp');
+      expect(ids).not.toContain('aer_arid');
+      expect(ids).not.toContain('aer_motion');
+    }
+  });
+
+  test('NJ run keeps the temperate aerial but never the arid one (strict region)', () => {
+    const seen = new Set();
+    for (let seed = 1; seed <= 25; seed++) {
+      matchClips(windows, AER, { seed, domain: 'roofing', state: 'New Jersey' }).filter(Boolean).forEach((c) => seen.add(c.id));
+    }
+    expect(seen.has('aer_temp')).toBe(true);
+    expect(seen.has('aer_arid')).toBe(false); // arid scenery never matches NJ, even on a loose run
+  });
+});
+
+describe('matchClips — interleaves aesthetic wides with satisfying close-ups', () => {
+  const MIXED = [
+    { id: 'sat1', src_file: 'S1', tags: ['shingle-install'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'sat2', src_file: 'S2', tags: ['valley-work'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'sat3', src_file: 'S3', tags: ['ridge-cap'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'aes1', src_file: 'A1', tags: ['establishing-exterior'], setting: 'exterior', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'aes2', src_file: 'A2', tags: ['roof-walkthrough'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+  const windows = Array.from({ length: 4 }, (_, i) => ({ start: i * 4, end: i * 4 + 4, theme: 'shingle-install' }));
+
+  test('a reel with both categories available uses both — not close-ups only', () => {
+    const sat = new Set(['shingle-install', 'valley-work', 'ridge-cap']);
+    const aes = new Set(['establishing-exterior', 'roof-walkthrough']);
+    for (let seed = 1; seed <= 15; seed++) {
+      const picks = matchClips(windows, MIXED, { seed, domain: 'roofing' }).filter(Boolean);
+      const hasSat = picks.some((c) => sat.has(c.tags[0]));
+      const hasAes = picks.some((c) => aes.has(c.tags[0]));
+      expect(hasSat).toBe(true);
+      expect(hasAes).toBe(true);
     }
   });
 });

@@ -18,7 +18,7 @@ const FALLBACK_THEME = 'generic-action';
 // damage, or demolition downer. (Operator: "always a good note.")
 const CLOSING_POSITIVE = new Set([
   'roof-aerial', 'establishing-exterior', 'ridge-cap', 'before-after',
-  'finished-interior-reveal', 'metal-roof-install',
+  'finished-interior-reveal',
 ]);
 const CLOSING_NEGATIVE = new Set([
   'roof-teardown', 'storm-damage', 'debris-haul', 'structure-teardown',
@@ -36,6 +36,29 @@ const SATISFYING_TAGS = new Set([
 ]);
 function isSatisfying(clip) {
   return clip.motion !== 'drone' && (clip.tags || []).some((t) => SATISFYING_TAGS.has(t));
+}
+
+// "Aesthetic" = the nice wide/cinematic half of the mix the operator wants
+// interleaved with the satisfying close-ups — clean establishing shots, roof
+// walkthroughs, and (gated) drone aerials. A reel should alternate aesthetic and
+// satisfying rather than pour in close-ups only.
+const AESTHETIC_TAGS = new Set(['establishing-exterior', 'roof-walkthrough', 'roof-aerial']);
+function isAesthetic(clip) {
+  return (clip.tags || []).some((t) => AESTHETIC_TAGS.has(t));
+}
+// Category drives the interleave: satisfying close-up vs aesthetic wide vs other.
+function clipCategory(clip) {
+  if (isSatisfying(clip)) return 'satisfying';
+  if (isAesthetic(clip)) return 'aesthetic';
+  return 'other';
+}
+
+// A drone aerial reveals geography (palms/snow/terrain) and property scale far
+// more than a close-up, so it must be residential AND match the client's state.
+// Operator: residential roofing only — "a hole in a commercial roof isn't" relatable.
+// (Non-residential aerials — skyline, silos — are exclude:true / fail the domain gate.)
+function isDroneAerial(clip) {
+  return clip.motion === 'drone' || (clip.tags || []).includes('roof-aerial');
 }
 
 function isClosingWorthy(clip) {
@@ -79,6 +102,9 @@ function matchClips(windows, catalog, opts = {}) {
       !excludeQuality.includes(c.quality) &&
       !(excludeHasText && c.has_text) &&
       (!state || clipEligibleForState(c, state, { strict })) &&
+      // Drone aerials are residential-only and region-sensitive: require a state
+      // AND a strict scenery match (even on loose runs). No state → no aerials.
+      (!isDroneAerial(c) || (state && clipEligibleForState(c, state, { strict: true }))) &&
       (service ? clipMatchesService(c, service) : (!domain || clipMatchesDomain(c, domain)))
   );
 
@@ -88,6 +114,7 @@ function matchClips(windows, catalog, opts = {}) {
   const domUsed = {}; // how many times each dominant shot-subject has been used
   const usedThemes = new Set(); // window themes already seen this reel
   let lastDominant = null; // dominant subject of the previous clip (no back-to-back repeats)
+  let lastCategory = null; // satisfying|aesthetic|other of the previous clip (drives interleave)
 
   const dominant = (c) => (c.tags && c.tags[0]) || 'generic-action';
   const avail = (c) => !usedIds.has(c.id) && (srcCount[c.src_file] || 0) < perSourceCap;
@@ -104,8 +131,16 @@ function matchClips(windows, catalog, opts = {}) {
     const best = pool.filter((c) => score(c) === min);
     const good = best.filter((c) => c.quality === 'good');
     const tier = good.length ? good : best; // prefer good over usable
-    const sat = tier.filter(isSatisfying); // then prefer satisfying work (not drone)
-    const from = sat.length ? sat : tier;
+    // Interleave: prefer the category opposite the previous clip so aesthetic wides
+    // and satisfying close-ups alternate (operator wants a mix of both, not close-ups
+    // only). After a satisfying close-up, reach for an aesthetic wide; otherwise reach
+    // for a satisfying close-up. Falls back to the satisfying-first preference, then
+    // the whole tier — never starves.
+    const wantCat = lastCategory === 'satisfying' ? 'aesthetic' : 'satisfying';
+    const preferred = tier.filter((c) => clipCategory(c) === wantCat);
+    let from;
+    if (preferred.length) from = preferred;
+    else { const sat = tier.filter(isSatisfying); from = sat.length ? sat : tier; }
     return from[Math.floor(rand() * from.length)];
   };
 
@@ -137,6 +172,7 @@ function matchClips(windows, catalog, opts = {}) {
       srcCount[chosen.src_file] = (srcCount[chosen.src_file] || 0) + 1;
       domUsed[dominant(chosen)] = (domUsed[dominant(chosen)] || 0) + 1;
       lastDominant = dominant(chosen);
+      lastCategory = clipCategory(chosen);
     }
     return chosen;
   });

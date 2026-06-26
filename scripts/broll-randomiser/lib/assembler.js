@@ -40,7 +40,11 @@ function renderReel(plan, voicePath, outPath, { rootDir = process.cwd() } = {}) 
       const part = path.join(workDir, `part-${String(i).padStart(4, '0')}.mp4`);
       const src = path.isAbsolute(p.path) ? p.path : path.join(rootDir, p.path);
       const loopArgs = p.loop ? ['-stream_loop', '-1'] : [];
-      ffmpeg([...loopArgs, '-i', src, '-t', p.take.toFixed(3), '-an', '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-r', '30', part]);
+      // -crf 18 (visually near-lossless) + -preset slow: this trim is the only
+      // generation of loss we control before Submagic re-encodes. Default CRF 23
+      // was needlessly soft. Submagic's own re-encode is unavoidable and not the
+      // bottleneck (its output runs larger, not more compressed).
+      ffmpeg([...loopArgs, '-i', src, '-t', p.take.toFixed(3), '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', part]);
       return part;
     });
 

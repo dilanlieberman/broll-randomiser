@@ -77,6 +77,10 @@ describe('clipMatchesDomain — roofing (strict)', () => {
   test('an interior water-damage clip does NOT match roofing even if tagged storm-damage', () => {
     expect(clipMatchesDomain({ tags: ['water-damage-interior', 'storm-damage', 'interior-demo-gutting'], setting: 'interior' }, 'roofing')).toBe(false);
   });
+
+  test('a commercial flat roof (flat-roof-membrane) does NOT match residential roofing even shot on a roof', () => {
+    expect(clipMatchesDomain({ tags: ['flat-roof-membrane', 'single-worker'], setting: 'roof' }, 'roofing')).toBe(false);
+  });
 });
 
 describe('clipMatchesDomain — remodeling', () => {
