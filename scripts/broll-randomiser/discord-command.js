@@ -52,6 +52,52 @@ async function downloadTo(url, destPath) {
   return destPath;
 }
 
+// --- Full-quality master delivery -------------------------------------------
+// The Discord post is a crushed ~8MB preview; the real deliverable is the
+// full-quality captioned master. File it into new-ad-iterations/<date>/<ad>/ and,
+// as the LAST step of the flow, push it to the Mac (canonical) over the reverse
+// SSH tunnel — fires per Discord prompt. If the Mac is asleep/offline the master
+// stays on the VPS and mac-tunnel.sh catch-up-pulls it on the next reconnect.
+const IS_VPS = fs.existsSync('/root') && process.platform === 'linux';
+const ITER_ROOT = path.join(__dirname, '../../new-ad-iterations');
+const MAC_TUNNEL_PORT = 2222;
+const MAC_PUSH_TARGET = 'dilanlieberman@localhost:/Users/dilanlieberman/smma-agency/new-ad-iterations/';
+const VPS_BACKHAUL_KEY = '/root/.ssh/id_ed25519'; // VPS->Mac key, authorized on the Mac (from="127.0.0.1")
+
+function nyDate() {
+  // YYYY-MM-DD in America/New_York (Pinnacle clients are US-based).
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+// Copy the full master + manifest into new-ad-iterations/<date>/<service>-<state>-<seed>/.
+// Returns {date, adName} or null if the reel file is missing (e.g. injected test stub).
+function fileMaster(reelPath, outPath, parsed) {
+  if (!reelPath || !fs.existsSync(reelPath)) return null;
+  const seedMatch = path.basename(outPath || '').match(/-(\d+)-broll\.mp4$/);
+  const seed = seedMatch ? seedMatch[1] : String(Date.now());
+  const adName = `${parsed.service}-${parsed.state || 'nostate'}-${seed}`.replace(/[^A-Za-z0-9._-]/g, '_');
+  const date = nyDate();
+  const adDir = path.join(ITER_ROOT, date, adName);
+  fs.mkdirSync(adDir, { recursive: true });
+  fs.copyFileSync(reelPath, path.join(adDir, `${adName}.mp4`));
+  const manifest = (outPath || '').replace(/\.mp4$/, '.manifest.txt');
+  if (manifest && fs.existsSync(manifest)) fs.copyFileSync(manifest, path.join(adDir, `${adName}.manifest.txt`));
+  return { date, adName };
+}
+
+// Push the day's folder to the Mac through the reverse tunnel (VPS localhost:2222).
+// True = delivered; false = Mac unreachable (mac-tunnel.sh catches up on reconnect).
+function pushToMac(date) {
+  const sshCmd = `ssh -p ${MAC_TUNNEL_PORT} -i ${VPS_BACKHAUL_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10`;
+  try {
+    execFileSync('rsync', ['-az', '-e', sshCmd, path.join(ITER_ROOT, date), MAC_PUSH_TARGET],
+      { stdio: 'pipe', timeout: 120000 });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // deps lets tests inject a fake generate/download; defaults wire the real ones.
 async function handleBrollRequest(message, deps = {}) {
   const { generateFn = generate, download = downloadTo, reply = (m) => message.reply(m) } = deps;
@@ -85,8 +131,27 @@ async function handleBrollRequest(message, deps = {}) {
   const reelPath = captionedPath || outPath;
   const postPath = compressForDiscord(reelPath); // shrink under Discord's upload cap
 
-  await reply({ content: '📤 Done — captioned reel:', files: [postPath] });
-  return { ok: true, reelPath, postPath, parsed };
+  // File the full-quality master and (last step) push it to the Mac. Never let a
+  // delivery hiccup kill the reel post — the master is on the VPS regardless.
+  let filed = null;
+  let delivered = null;
+  try {
+    filed = fileMaster(reelPath, outPath, parsed);
+    if (filed && IS_VPS) delivered = pushToMac(filed.date);
+  } catch (err) {
+    console.error('[broll] master filing/delivery failed:', err.message);
+  }
+
+  let where = '';
+  if (filed) {
+    const loc = `new-ad-iterations/${filed.date}/${filed.adName}/`;
+    if (!IS_VPS) where = `\n🗂️ Full master filed locally → ${loc}`;
+    else if (delivered) where = `\n🗂️ Full master → your Mac: ${loc}`;
+    else where = `\n🗂️ Full master on VPS (Mac offline — syncs on reconnect): ${loc}`;
+  }
+
+  await reply({ content: `📤 Done — captioned reel (preview):${where}`, files: [postPath] });
+  return { ok: true, reelPath, postPath, parsed, filed, delivered };
 }
 
 module.exports = { handleBrollRequest, AUDIO_RE };
