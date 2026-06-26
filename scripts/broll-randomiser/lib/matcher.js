@@ -117,10 +117,28 @@ function matchClips(windows, catalog, opts = {}) {
   let lastCategory = null; // satisfying|aesthetic|other of the previous clip (drives interleave)
 
   const dominant = (c) => (c.tags && c.tags[0]) || 'generic-action';
-  const avail = (c) => !usedIds.has(c.id) && (srcCount[c.src_file] || 0) < perSourceCap;
+  // Cap per (source × subject), not per source. A single source video often holds
+  // visually-distinct shots (Ridge_Cap_roofinglife.mp4 = ridge-cap + valley-work +
+  // shingle); capping per source locked out all the diverse subjects after one use
+  // and the reel collapsed to shingle. Two SAME-subject clips from one source still
+  // read as "the same clip twice" (blocked); different subjects do not (allowed).
+  const srcKey = (c) => `${c.src_file}|${dominant(c)}`;
+  const avail = (c) => !usedIds.has(c.id) && (srcCount[srcKey(c)] || 0) < perSourceCap;
 
   // Candidate clips for a theme under the live no-repeat + per-source-cap constraints.
   const poolFor = (theme) => eligible.filter((c) => c.tags.includes(theme) && avail(c));
+
+  // Hard adjacency break. pick()'s same-subject penalty is SOFT — useless when every
+  // candidate shares the previous clip's subject (e.g. a theme like roof-walkthrough
+  // whose only clips are shingle-install-dominant). When the pool has collapsed to
+  // the prior subject, swap in a different subject drawn from `fallback` (already
+  // constrained to valence/closing/etc.) so identical-looking shots never stack.
+  const avoidRepeat = (pool, fallback) => {
+    if (!pool.length || !lastDominant) return pool;
+    if (!pool.every((c) => dominant(c) === lastDominant)) return pool;
+    const diff = fallback.filter((c) => dominant(c) !== lastDominant);
+    return diff.length ? diff : pool;
+  };
 
   // Diversity-aware pick: minimize reuse of a shot-subject and never repeat the
   // previous clip's dominant subject back-to-back, so a reel looks unique.
@@ -148,8 +166,10 @@ function matchClips(windows, catalog, opts = {}) {
     let chosen;
     if (idx === windows.length - 1) {
       // The closer: a good note wins over theme match. Finished/aspirational first,
-      // then anything non-negative, then whatever's left.
-      chosen = pick(eligible.filter((c) => avail(c) && isClosingWorthy(c)));
+      // then anything non-negative, then whatever's left. Break adjacency among the
+      // closing-worthy set when possible (good-note still wins if it's the only kind).
+      const closing = eligible.filter((c) => avail(c) && isClosingWorthy(c));
+      chosen = pick(avoidRepeat(closing, closing));
       if (!chosen) chosen = pick(eligible.filter((c) => avail(c) && !c.tags.some((t) => CLOSING_NEGATIVE.has(t))));
       if (!chosen) chosen = pick(eligible.filter(avail));
     } else {
@@ -165,11 +185,14 @@ function matchClips(windows, catalog, opts = {}) {
       if (!pool.length && w.theme !== FALLBACK_THEME) pool = poolFor(FALLBACK_THEME).filter(vOk);
       if (!pool.length) pool = eligible.filter((c) => avail(c) && vOk(c));
       if (!pool.length) pool = eligible.filter(avail); // last resort: any eligible
+      // Break a same-subject streak: if the theme pool collapsed to the prior
+      // subject, widen to a different subject from the valence-ok eligible pool.
+      pool = avoidRepeat(pool, eligible.filter((c) => avail(c) && vOk(c)));
       chosen = pick(pool);
     }
     if (chosen) {
       usedIds.add(chosen.id);
-      srcCount[chosen.src_file] = (srcCount[chosen.src_file] || 0) + 1;
+      srcCount[srcKey(chosen)] = (srcCount[srcKey(chosen)] || 0) + 1;
       domUsed[dominant(chosen)] = (domUsed[dominant(chosen)] || 0) + 1;
       lastDominant = dominant(chosen);
       lastCategory = clipCategory(chosen);

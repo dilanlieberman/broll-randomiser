@@ -46,6 +46,26 @@ describe('matchClips', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  test('allows different subjects from one source but blocks the same subject twice', () => {
+    // One rich source 'X' holds two distinct subjects + a duplicate of one. The cap
+    // is per (source × subject): both subjects may appear, the duplicate may not.
+    const RICH = [
+      { id: 'x_ridge1', src_file: 'X', tags: ['ridge-cap'], quality: 'good' },
+      { id: 'x_ridge2', src_file: 'X', tags: ['ridge-cap'], quality: 'good' },
+      { id: 'x_valley1', src_file: 'X', tags: ['valley-work'], quality: 'good' },
+      { id: 'pad1', src_file: 'P', tags: ['shingle-install'], quality: 'good' },
+    ];
+    const windows = Array.from({ length: 4 }, (_, i) => win('ridge-cap', i));
+    for (let seed = 1; seed <= 20; seed++) {
+      const ids = matchClips(windows, RICH, { seed }).filter(Boolean).map((c) => c.id);
+      // never both ridge clips from source X (same source + same subject = a dup)
+      expect(ids.includes('x_ridge1') && ids.includes('x_ridge2')).toBe(false);
+      // but the valley clip from the SAME source X is allowed alongside a ridge clip
+      const usedX = ids.filter((id) => id.startsWith('x_'));
+      if (usedX.length > 1) expect(new Set(usedX.map((id) => id.replace(/\d+$/, ''))).size).toBeGreaterThan(1);
+    }
+  });
+
   test('caps pieces per source file and falls back when the theme pool is exhausted', () => {
     // 4 roof-teardown windows; eligible roof-teardown = a1,a2,a3,b1. Cap 2/source:
     // src A contributes at most 2, B contributes 1 -> 4th window falls back to generic-action.
@@ -226,6 +246,40 @@ describe('matchClips — drone aerials are residential + strict-region gated', (
     }
     expect(seen.has('aer_temp')).toBe(true);
     expect(seen.has('aer_arid')).toBe(false); // arid scenery never matches NJ, even on a loose run
+  });
+});
+
+describe('matchClips — never stacks the same subject back-to-back (theme-pool collapse)', () => {
+  // Regression for the FL reel (seed 39535929): themes like roof-walkthrough /
+  // before-after are satisfied ONLY by shingle-install-dominant clips, so the
+  // theme-scoped pool collapsed to one subject and the soft penalty couldn't avoid
+  // a repeat — three shingle-install shots ran back-to-back.
+  const COLLAPSE = [
+    { id: 'sh1', src_file: 'A', tags: ['shingle-install', 'before-after'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'sh2', src_file: 'B', tags: ['shingle-install', 'roof-walkthrough'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'vw1', src_file: 'C', tags: ['valley-work'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+    { id: 'est1', src_file: 'D', tags: ['establishing-exterior'], setting: 'roof', quality: 'good', has_text: false, scenery: 'temperate' },
+  ];
+  const windows = [
+    { start: 0, end: 4, theme: 'before-after' },     // -> sh1 (shingle-install)
+    { start: 4, end: 8, theme: 'roof-walkthrough' }, // theme pool = {sh2}, all shingle-install
+    { start: 8, end: 12, theme: 'generic-action' },  // closer
+  ];
+
+  test('a non-final window does not repeat the prior subject when its theme pool is all that subject', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const picks = matchClips(windows, COLLAPSE, { seed, domain: 'roofing' }).filter(Boolean);
+      expect(picks[1].tags[0]).not.toBe('shingle-install'); // valley-work / establishing was free
+    }
+  });
+
+  test('no two consecutive clips share a dominant subject when an alternative is available', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const picks = matchClips(windows, COLLAPSE, { seed, domain: 'roofing' }).filter(Boolean);
+      for (let i = 1; i < picks.length; i++) {
+        expect(picks[i].tags[0]).not.toBe(picks[i - 1].tags[0]);
+      }
+    }
   });
 });
 

@@ -19,6 +19,16 @@ The Discord message's service word sets the scope (`clipMatchesService`):
   to a commercial roof. `metal-roof-install` clips are all `exclude:true` at the
   catalog level (their only source is a damaged "fell through the roof" video — holes,
   not relatable work). Operator: *"a hole in a commercial roof isn't"* relatable.
+- **Building SIZE rule (wide/aerial shots only).** A clip that reveals a building
+  (`roof-aerial` / `establishing-exterior` wides) is KEPT only if it's **dead-obvious a
+  single-family home — you can see the corners of the house.** If it's a big top-down
+  roof expanse (can't see the house extent), sprawling/multi-section, has solar arrays,
+  shows a neighborhood / multiple homes / a commercial road, or is otherwise even
+  slightly ambiguous → it's excluded. Operator: *"single family home size only… if it's
+  even slightly ambiguous drop it, and don't be afraid to reuse the same clips."*
+  Tags can't detect this (commercial isn't tagged) — it's a visual call, audited by
+  extracting a frame per wide/aerial clip into a contact sheet (ffmpeg tile) and judging
+  by eye. Close-up work shots (shingle/valley/ridge) show no building and are unaffected.
 - **Bathroom ad → bathroom-interior clips only.** No kitchens, decks, pergolas,
   roofing, or anything `setting:exterior`. **Kitchen ad → kitchen-interior only**
   (no bathrooms). Same idea per service. Kitchen additionally REQUIRES a kitchen-remodel tag (real kitchens only) — generic interior clips (walk-in closets, drywall, loose tiling, bathroom reveals) were flooding kitchen ads.
@@ -82,8 +92,17 @@ wins over theme match for the closer (`isClosingWorthy`).
 
 ## 8. Variety
 - Every clip a different shot-subject; **never the same dominant subject back-to-back**.
-- **One clip per source video per reel** (`perSourceCap: 1`) — two pieces of the same
-  source read as "the same clip twice" even at different timestamps.
+  This is now a HARD break (`avoidRepeat` in `matcher.js`): when a theme's pool
+  collapses to the previous subject, the matcher widens to a different subject from
+  the valence-ok eligible pool rather than stacking identical-looking shots. (Soft
+  scoring alone failed — it can't avoid a repeat when every candidate is that subject.)
+- **One clip per (source video × subject) per reel** (`perSourceCap: 1`, keyed on
+  `src_file|dominant-tag`). Two pieces of the same source with the SAME subject read
+  as "the same clip twice" → blocked. But a single source often holds visually
+  distinct shots (`Ridge_Cap_roofinglife.mp4` = ridge-cap + valley-work + shingle);
+  capping per *source* locked out all those diverse subjects after one use and reels
+  collapsed to whichever subject was spread across the most sources (shingle-install).
+  Capping per *(source × subject)* keeps the no-dup intent while restoring variety.
 - Seeded per run, so re-running reshuffles to a visibly different cut.
 
 ## 9. Quality
